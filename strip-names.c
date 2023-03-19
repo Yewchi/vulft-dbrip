@@ -37,12 +37,13 @@ int main(int argc, char** argv) {
 
 	printf("Parsing...\n");
 	unsigned short hero_index = 0;
-	while(fgets(buffer, buffer_size, fp_dotabuff_heroes) != NULL) {
-		if ((curr_char = strstr(buffer, "div class=\"hero-grid\"")) != NULL) {
+	char* shift_buffer = buffer;
+	while(fgets(shift_buffer, buffer_size, fp_dotabuff_heroes) != NULL) {
+		if ((curr_char = strstr(shift_buffer, "div class=\"hero-grid\"")) != NULL) {
 			printf("Found the hero key\n");
-			while ((curr_char = strstr(buffer, "jpg)\"><div class=\"name\"")) != NULL) {
+			while ((curr_char = strstr(shift_buffer, "jpg)\"><div class=\"name\"")) != NULL) {
 				curr_char = curr_char+jump_forward_to_name;
-				buffer = curr_char;
+				shift_buffer = curr_char;
 				int i=0;
 				hero_path_part[hero_index] = (char*)calloc(hero_path_size, sizeof(char));
 				printf("alloc'd %dth hero\n", hero_index);
@@ -59,12 +60,14 @@ int main(int argc, char** argv) {
 		}
 		printf("%s", buffer);
 	}
+
 	printf("Names found, storing in 'hero_list.dat'.\n");
 	
 	FILE* fp_hero_list = fopen("hero_list.dat", "w+");
 
+	int max_index = hero_index-1;
 	hero_index = 0;
-	while(hero_path_part[hero_index] != NULL) {
+	while(hero_index <= max_index) {
 		fwrite(hero_path_part[hero_index], strlen(hero_path_part[hero_index]), sizeof(char), fp_hero_list);	
 		free(hero_path_part[hero_index++]);	
 	}

@@ -207,6 +207,10 @@ static int rdbl_to_ability_index(char* rdbl) {
 	int index = -1;
 	for (int i=0; i<ability_list_len; i++) {
 		if (strcmp(rdbl, ability_list[i]) == 0) {
+#ifdef VERBOSE
+			printf("Search for \"%s\" found \"%s\" at %d.\n",
+					rdbl, ability_list[i], i);
+#endif
 			if (i >= ability_pre_talent_len) {
 				return ability_list_len + ability_pre_talent_len - 1 - i;
 			}
@@ -312,11 +316,11 @@ int process_analyse_and_set_prepend_data() {
 	for(int i=0; i<item_build_len[itemBuildIndex]; i++) {
 		CurrHeroData.itemBuild[i] = to_bltin(item_build[itemBuildIndex][i]);
 	}
-	CurrHeroData.itemBuildLen = item_build_len[itemBuildIndex];
-	for (int i=0; i < ability_pre_talent_len; i++) {
+	for(int i=0; i<ability_list_len; i++) {
 		CurrHeroData.abilityIndexToName[i] =
 				ability_list[i];
 	}
+	CurrHeroData.itemBuildLen = item_build_len[itemBuildIndex];
 	for (int i=0; i < MAX_TALENTS; i++) { // talents are loaded top to bottom
 		CurrHeroData.abilityIndexToName[ability_pre_talent_len+i] =
 				ability_list[ability_list_len-i-1];
@@ -379,10 +383,10 @@ static int load_rdbl_to_bltin(char* filename, char delim) {
 				hash_insert(rdbl, bltin);
 			}
 		}
+		fclose(rdbl_to_bltin_fp);
 		return PROCESS_SUCCESS;
 	} else
 		return PROCESS_FAILED;
-
 }
 int create_readable_to_built_in_hash() {
 	if (load_rdbl_to_bltin(BLTIN_ITEM_FN, BLTIN_DELIM) == PROCESS_SUCCESS

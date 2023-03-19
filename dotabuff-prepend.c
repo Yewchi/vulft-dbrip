@@ -23,10 +23,6 @@ void set_guide_number_string(int num, char* number_string) {
 
 int main(int argc, char** argv) {
 	setvbuf(stdout, 0, _IONBF, 0);
-	FILE* fp_hero_names = fopen("hero-list.dat", "r");
-	FILE* fp_hero_name_diffs = fopen("built-in-diff.dat", "r");
-	FILE* fp_solo_potential = fopen("solo-potential.dat", "r");
-	FILE* fp_readable_to_built_in_items = fopen("readable-to-built-in.dat", "r");
 	FILE* this_hero_guide;
 	char* guide_name = calloc(20, sizeof(char));
 	char* number_string = calloc(4, sizeof(char));
@@ -35,8 +31,6 @@ int main(int argc, char** argv) {
 	int n = 1;
 	int single_run_guide_num = DO_NOT_RUN_SINGLE;
 	int full_run = 1;
-
-	printf("Locked and loaded..\nSummoning demons...\n");
 
 	// Check if single run
 	if (argc == 2) {
@@ -48,16 +42,23 @@ int main(int argc, char** argv) {
 		printf("attempting to run single on %s%d\n", guide_name, n);
 	}
 
+	if (set_ability_ignore_data("ability_ignore.dat")
+			!= PARSE_CONTINUE) {
+		printf("Err - Failure when setting ability ignore data\n");
+		return EXIT_FAILURE; // dirty
+	}
+
+	printf("Locked and loaded..\nSummoning demons...\n");
+
 	// and other file checks
 	if (create_readable_to_built_in_hash() != PROCESS_SUCCESS) {
 		printf("Err - Process file open \"r\" failed.\n");
-		return EXIT_FAILURE;
+		return EXIT_FAILURE; // dirty
 	} else if (out_initialize() != OUT_SUCCESS) {
 		printf("Err - Output buffer alloc failed\n");
 		free_process_hash_lists();
-		return EXIT_FAILURE;
+		return EXIT_FAILURE; // dirty
 	}
-
 
 	//f_readable_name(PARSE_CONTINUE, guide_name, &parse_hero_name);
 	//alloc_parse_match_data();
@@ -74,6 +75,7 @@ int main(int argc, char** argv) {
 				printf("Exit - Failed on %s.\n", guide_name);
 				break;
 			}
+			fclose(this_hero_guide);
 		} else
 			break;
 		n++;
@@ -83,11 +85,6 @@ int main(int argc, char** argv) {
 	}
 
 	printf("\nEnded parsing, exiting..\n");
-
-	fclose(fp_hero_names);
-	fclose(fp_hero_name_diffs);
-	fclose(fp_solo_potential);
-	fclose(fp_readable_to_built_in_items);
 
 	free_parse_data();
 	free_process_hash_lists();

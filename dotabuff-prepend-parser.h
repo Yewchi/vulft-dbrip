@@ -8,8 +8,9 @@
 
 const typedef struct sanitize_escape {
 	char* code;
-	int len;
-	char replace;
+	int code_len;
+	char* replace;
+	int replace_len;
 } SANITIZE_ESCAPE;
 
 const typedef enum search_result {
@@ -44,6 +45,7 @@ struct parse_instr {
 	 * - otherwise it is an indicator of an end of a logical section of data. i.e. no 
 	 * - more items to parse.  */
 
+int set_ability_ignore_data(const char*);
 int parse_hero_guide(FILE*);
 void zero_state_parse_match_instr();
 void free_parse_data();

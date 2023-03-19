@@ -8,6 +8,7 @@
 
 #define MAX_ABILITY_SLOTS 23
 #define MAX_TALENTS 8
+#define MAIN_ABILITIES 4
 #define MAX_ITEMS 128
 // Invoker 7*3 + 4
 #define MAX_SKILL_UPS 25
@@ -19,6 +20,8 @@
 #define MAX_LANE_TYPE 5
 
 #define DO_NOT_RUN_SINGLE 0
+
+#define REMOVE_ADDITIONAL_ABILITIES
 
 #ifdef VERBOSE
 #define DEBUG

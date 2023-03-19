@@ -1,12 +1,18 @@
 #include "dotabuff-prepend.h"
 
 #define TOWN_PORTAL_SCROLL_LEN 18
-#define NUM_SANITIZERS 2
+
+#define ABILITY_IGNORE_DAT_DELIM '@'
+
+#define MAX_HERO_OR_ABILITY_NAME_LEN 128
+
+#define NO_IGNORES_FOR_HERO -1
 
 extern HERO_DATA CurrHeroData;
 
+#define NUM_SANITIZERS 4
 const static SANITIZE_ESCAPE sanitizers[] = {
-	{"&#47;", 5, '/'}, {"&#39;", 5, '\''} 
+	{"&#47;", 4, "/", 1}, {"&#39;", 4, "'", 1}, {"\r", 1, "", 0}, {"';", 2, "'", 1}
 };
 
 int match_iteration = 0;
@@ -21,6 +27,21 @@ static int f_ability_build(int, char*, PARSE_INSTR*);
 
 static void parse_instr_template_cpy(PARSE_INSTR*);
 static void replace_str_in_instr_keys(char*, char*);
+
+typedef struct {
+	char hero_name[MAX_HERO_OR_ABILITY_NAME_LEN];
+	char** abilities;
+	int ability_count;
+} IGNORE_DATA;
+
+typedef struct {
+	IGNORE_DATA* data;
+	int hero_count; // number of heroes with ignoreable abilities
+} IGNORE_ABILITY_ARR;
+
+IGNORE_ABILITY_ARR ignore_ability_arr;
+
+int ignore_hero_index = NO_IGNORES_FOR_HERO;
 
 static int any_data_search_success(char* buffer, char* key, char* end_if_key, int *seek_diff) {
 	int len = strlen(key);
@@ -82,18 +103,21 @@ static int any_data_search_success(char* buffer, char* key, char* end_if_key, in
 	return SEARCH_CONTINUE;
 }
 static int sanitize_html_special_chars(char* str) {
-	int end_check = strlen(str) - 4; // strlen("&#1;\0") - 1
+	int end_check = strlen(str);
 	// blah
+	str[end_check] = '\0';
 	int i=0;
+	static char trailingSwapBuffer[MAX_HTML_READ];
+	SANITIZE_ESCAPE* san;
 	while(i<end_check) {
-		if (str[i] == '&') {
-			for (int s_index=0; s_index<NUM_SANITIZERS; s_index++) {
-				if (memcmp(&(str[i]), sanitizers[s_index].code, sanitizers[s_index].len) == 0) {
-					str[i] = sanitizers[s_index].replace;
-					strcpy(&(str[i+1]), &(str[i + sanitizers[s_index].len]));
-					end_check += 1 - sanitizers[s_index].len;
-					str[end_check + 4] = '\0'; // « should never fail¿
-				}
+		for (int s_index=0; s_index<NUM_SANITIZERS; s_index++) {
+			san = &(sanitizers[s_index]);
+			if (memcmp(&(str[i]), san->code, san->code_len) == 0) {
+				strcpy(trailingSwapBuffer, &(str[i+san->code_len]));
+				strncpy(&(str[i]), san->replace, san->replace_len);
+				strcpy(&(str[i+san->replace_len]), trailingSwapBuffer);
+				end_check += san->replace_len - san->code_len;
+				str[end_check + 4] = '\0'; // « should never fail¿
 			}
 		}
 		i++;
@@ -103,12 +127,14 @@ static void set_match_data_str(char* src, int len, MATCH_DATA* md) {
 	int i = md->in_use;
 	if (md->data[i] == NULL || len > md->length[i]) {
 		if (md->length[i] != 0) {
-			printf("FOUND ONE\n");
+#ifdef VERBOSE
+			printf("Increasing size of index's match data.\n");
+#endif
 			md->data[i][md->length[i]] = '\0';
 			free(md->data[i]);
 		}
 		md->length[i] = len;
-		md->data[i] = malloc(sizeof(char)*(len+1));
+		md->data[i] = malloc(sizeof(char)*(len+1)*2);
 	}
 	strncpy(md->data[i], src, len);
 	md->data[i][len] = '\0';
@@ -124,17 +150,36 @@ static int set_ability_list_ability(char* buffer, PARSE_INSTR* instr) {
 			buffer, "title=\"", "jpg\" /", &ability_str_readable_index
 		);
 	if (search_result == SEARCH_KEY_FOUND) {
+		MATCH_DATA* md = &(instr->match_data[match_iteration]);
 		char* start_key = &buffer[ability_str_readable_index];
 		char* end = strchr(start_key, '\"');
 		if (end == NULL) { printf("ERR - no end chr.\n"); return PARSE_FAILED; }
 		int ability_readable_len = end - start_key;
-		MATCH_DATA* md = &(instr->match_data[match_iteration]);
 		set_match_data_str(
 				&buffer[ability_str_readable_index], ability_readable_len, md
 			);
 		sanitize_html_special_chars(md->data[md->in_use-1]);
+
 #ifdef DEBUG
-	printf("ABILITY SET %d \"%s\"\n", md->in_use, md->data[md->in_use-1]);
+		printf("ABILITY SET %d \"%s\"\n", md->in_use, md->data[md->in_use-1]);
+#endif
+
+#ifdef REMOVE_ADDITIONAL_ABILITIES
+		// Remove the assumed additional unskillable abilities. eg. Flame cloak
+		if (ignore_hero_index != NO_IGNORES_FOR_HERO) {
+			IGNORE_DATA* ignoreData
+				= &ignore_ability_arr.data[ignore_hero_index];
+			for (int i=0; i<ignoreData->ability_count; i++) {
+				if (strcmp(md->data[md->in_use-1], ignoreData->abilities[i]) == 0) {
+#ifdef DEBUG
+					printf("ABILITY UNSET (REMOVE_ADDITIONAL_ABILITIES) %d \"%s\".\n",
+							md->in_use, md->data[md->in_use-1]);
+#endif
+					--md->in_use;
+					break;
+				}
+			}
+		}
 #endif
 		return PARSE_CONTINUE;
 	} else { 
@@ -259,6 +304,17 @@ static int f_readable_name(int key_type_found, char* buffer, PARSE_INSTR* instru
 		strncpy(CurrHeroData.heroReadable, buffer, name_len);
 		CurrHeroData.heroReadable[name_len] = '\0';
 		sanitize_html_special_chars(CurrHeroData.heroReadable);
+
+		// Check for ignores
+		for (int i=0; i<ignore_ability_arr.hero_count; i++) {
+			printf("%d %s %s check ignore\n", i, ignore_ability_arr.data[i].hero_name, CurrHeroData.heroReadable);
+			if (strcmp(CurrHeroData.heroReadable, ignore_ability_arr.data[i].hero_name) == 0) {
+				printf("Ignore abilities is on for %s\n", ignore_ability_arr.data[i].hero_name);
+				ignore_hero_index = i;
+				break;
+			}
+		}
+
 		if (process_set_data(PR_HERO_READABLE, NULL) == PROCESS_SUCCESS)
 			return PARSE_END;
 		else
@@ -540,10 +596,96 @@ static void free_match_data(PARSE_INSTR* instr) {
 	}
 	free(instr->match_data);
 }
+static void free_ignore_ability_arr() {
+	for (int i=0; i<ignore_ability_arr.hero_count; i++) {
+		IGNORE_DATA* ignoreData = &ignore_ability_arr.data[i];
+		for (int k=0; k<ignoreData->ability_count; k++) {
+			free(ignoreData->abilities[k]);
+		}
+		free(ignoreData->abilities);
+		free(ignoreData);
+	}
+}
 void free_parse_data() {
 	free_match_data(&parse_ability_list);
 	for (int i=0; i<NUM_PARSE_MATCH_INSTR; i++) {
 		free_match_data(&(parse_match[i]));
 	}
+	free_ignore_ability_arr();
 	// (others have no match data)
+}
+int set_ability_ignore_data(const char* filename) {
+	FILE* fp_ability_ignore = fopen(filename, "r");
+	if (fp_ability_ignore == NULL)
+		return PARSE_FAILED;
+
+	char buffer[512];
+
+	ignore_ability_arr.hero_count = 0;
+	IGNORE_DATA** ignoreAbilityDataArr = &ignore_ability_arr.data;
+	*ignoreAbilityDataArr = NULL;
+	while (fgets(buffer, 512, fp_ability_ignore) != NULL) {
+		char* end_str = strchr(buffer, ABILITY_IGNORE_DAT_DELIM);
+		if (end_str == NULL) {
+			break;
+		}
+		// ++ new hero ignore data
+		*ignoreAbilityDataArr = (IGNORE_DATA*)realloc((*ignoreAbilityDataArr), // about 5-15 heroes
+				sizeof(IGNORE_DATA) * (ignore_ability_arr.hero_count+1));
+		if (*ignoreAbilityDataArr == NULL) {
+			printf("Err - Unable to allocate IGNORE_DATA\n.");
+			return PARSE_FAILED;
+		} else { ignore_ability_arr.hero_count++; }
+
+		IGNORE_DATA* ignoreData = &(*ignoreAbilityDataArr)[ignore_ability_arr.hero_count-1];
+		ignoreData->abilities = NULL;
+
+		// hero name
+		short name_len = end_str-buffer;
+		strncpy(ignoreData->hero_name, buffer, name_len);
+		ignoreData->hero_name[name_len] = '\0';
+
+#ifdef DEBUG
+		printf("Ignore Ability Line: %s\n", buffer);
+		printf("Ignores for Hero \"%s\"...\n", ignoreData->hero_name);
+#endif
+
+		// add the ignorable abilities
+		while(1) {
+			char* this_name = &end_str[1]; // skip to next after delim
+			if (this_name != NULL && strlen(this_name) > 1) {
+				char*** abilityArr = &(ignoreData->abilities);
+
+				// ++ new ability string
+				*abilityArr = (char**)realloc(*abilityArr, // usually only happens a one to four times
+						sizeof(char**) * ignoreData->ability_count+1);
+
+				if (*abilityArr == NULL) {
+					printf("Err - Unable to allocate ability char* pointer");
+					return PARSE_FAILED;
+				} else { ignoreData->ability_count++; };
+
+				char** abilityStr = &(*abilityArr)[ignoreData->ability_count-1];
+				*abilityStr = (char*)malloc(sizeof(char)*MAX_HERO_OR_ABILITY_NAME_LEN);
+
+				end_str = strchr(this_name, ABILITY_IGNORE_DAT_DELIM);
+				if (end_str == NULL) {
+					// correct for end of line / final line
+					end_str = strchr(this_name, '\n');
+					if (end_str == NULL) {
+						end_str = this_name + strlen(this_name);
+					}
+				}
+
+				// ability name
+				short name_len = end_str - this_name;
+				strncpy(*abilityStr, this_name, name_len);
+				(*abilityStr)[name_len] = '\0';
+#ifdef DEBUG
+				printf("IGNORE ability %d, %s\n", ignoreData->ability_count, *abilityStr);
+#endif
+			} else break;
+		} 
+	}
+	return PARSE_CONTINUE;
 }
