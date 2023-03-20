@@ -313,14 +313,33 @@ int process_analyse_and_set_prepend_data() {
 			largestItemBuildSize = item_build_len[i];
 		}
 	}
+	short bootsFound = 0;
+	short skipped = 0;
 	for(int i=0; i<item_build_len[itemBuildIndex]; i++) {
-		CurrHeroData.itemBuild[i] = to_bltin(item_build[itemBuildIndex][i]);
+		char* builtInItem = to_bltin(item_build[itemBuildIndex][i]);
+		if (builtInItem == NULL) {
+			skipped++; // Unknown item
+		} else {
+			if (builtInItem != NULL && strcmp(builtInItem, "item_boots") == 0) {
+				if (bootsFound) { 
+					skipped++; // bought boots twice
+				} else {
+					bootsFound = 1;
+					CurrHeroData.itemBuild[i-skipped]
+						= builtInItem;
+				}
+			} else {
+				CurrHeroData.itemBuild[i-skipped]
+					= builtInItem;
+			}
+		}
 	}
+	largestItemBuildSize -= skipped;
+	CurrHeroData.itemBuildLen = largestItemBuildSize;
 	for(int i=0; i<ability_list_len; i++) {
 		CurrHeroData.abilityIndexToName[i] =
 				ability_list[i];
 	}
-	CurrHeroData.itemBuildLen = item_build_len[itemBuildIndex];
 	for (int i=0; i < MAX_TALENTS; i++) { // talents are loaded top to bottom
 		CurrHeroData.abilityIndexToName[ability_pre_talent_len+i] =
 				ability_list[ability_list_len-i-1];
