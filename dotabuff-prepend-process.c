@@ -34,7 +34,7 @@ static int ability_build_len[MAX_MATCHES];
 // /At
 
 static void hash_insert(char* rdbl, char* bltin) {
-	int hash = (rdbl[0]*41 + rdbl[1]*11 - rdbl[2]) % 256;
+	int hash = (rdbl[0]*41 + rdbl[1]*11 - rdbl[2]) % MAX_HASH_INDEX;
 	HASH_NODE* new = calloc(1, sizeof(HASH_NODE));
 	new->rdbl = rdbl;
 	new->bltin = bltin;
@@ -43,7 +43,7 @@ static void hash_insert(char* rdbl, char* bltin) {
 	hash_lists[hash] = new;
 }
 static char* to_bltin(char* rdbl) {
-	int hash = (rdbl[0]*41 + rdbl[1]*11 - rdbl[2]) % 256;
+	int hash = (rdbl[0]*41 + rdbl[1]*11 - rdbl[2]) % MAX_HASH_INDEX;
 	HASH_NODE* node = hash_lists[hash];
 	while (node != NULL) {
 		if (strcmp(node->rdbl, rdbl) == 0) {
@@ -313,18 +313,23 @@ int process_analyse_and_set_prepend_data() {
 			largestItemBuildSize = item_build_len[i];
 		}
 	}
-	short bootsFound = 0;
 	short skipped = 0;
+	static char* found = "found";
 	for(int i=0; i<item_build_len[itemBuildIndex]; i++) {
 		char* builtInItem = to_bltin(item_build[itemBuildIndex][i]);
 		if (builtInItem == NULL) {
 			skipped++; // Unknown item
 		} else {
-			if (builtInItem != NULL && strcmp(builtInItem, "item_boots") == 0) {
-				if (bootsFound) { 
+			if (builtInItem != NULL && ( strstr(builtInItem, "_boots") != NULL
+					|| strstr(builtInItem, "guardian_greaves") != NULL) ) {
+				char* workingBoots = (char*)calloc(128, sizeof(char));
+				strcpy(workingBoots, builtInItem);
+				strcat(workingBoots, CurrHeroData.heroReadable);
+
+				if (to_bltin(workingBoots) != NULL) { 
 					skipped++; // bought boots twice
 				} else {
-					bootsFound = 1;
+					hash_insert(workingBoots, found);
 					CurrHeroData.itemBuild[i-skipped]
 						= builtInItem;
 				}
