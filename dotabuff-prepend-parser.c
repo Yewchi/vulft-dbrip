@@ -307,7 +307,9 @@ static int f_readable_name(int key_type_found, char* buffer, PARSE_INSTR* instru
 
 		// Check for ignores
 		for (int i=0; i<ignore_ability_arr.hero_count; i++) {
+#ifdef VERBOSE
 			printf("%d %s %s check ignore\n", i, ignore_ability_arr.data[i].hero_name, CurrHeroData.heroReadable);
+#endif
 			if (strcmp(CurrHeroData.heroReadable, ignore_ability_arr.data[i].hero_name) == 0) {
 				printf("Ignore abilities is on for %s\n", ignore_ability_arr.data[i].hero_name);
 				ignore_hero_index = i;
@@ -644,6 +646,7 @@ int set_ability_ignore_data(const char* filename) {
 		short name_len = end_str-buffer;
 		strncpy(ignoreData->hero_name, buffer, name_len);
 		ignoreData->hero_name[name_len] = '\0';
+		ignoreData->ability_count = 0;
 
 #ifdef DEBUG
 		printf("Ignore Ability Line: %s\n", buffer);
